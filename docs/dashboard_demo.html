@@ -761,7 +761,32 @@ html[data-theme="dark"] #t2PreviewControls :is(.previewApChoices,.previewModelCh
   for(let i=0;i<8;i++){fsdSettings['stock'+i]=[0,0,1,1,0,0,0,1][i];}
   const smartshift={ok:true,profileSupported:model!==1,executionEnabled:false,protocol:'AUTO',state:'DISABLED',reason:'Disabled',config:{requireSeatbelt:true,requireSteering:false,steeringFallback:false,parkSteeringFallback:false,maxSpeedKph:8,hardCutSpeedKph:10,speedBus:2,cooldownMs:200,parkConfirmDeg:15,driveReverseConfirmDeg:30,obstacleConfirmDeg:30,obstacleThresholdCm:60},prearm:{candidate:'NONE',source:'NONE'},templates:{v12:{ready:false},v13V14:{ready:false}},engine:{sends:0,confirmations:0,failures:0},...saved.smartshift};
   const serviceSettings={ok:true,canEnter:true,chinaRestore:!!saved.chinaRestore,restoreTxOk:0,restoreTxFail:0};
-  const preheat={ok:true,enabled:false,supported:true,state:'OFF',engine:'off',txOk:0,txFail:0};
+  const preheat={ok:true,enabled:true,supported:true,targetC:40,txOk:1200,txFail:0};
+  const thermalDemoStart=Date.now();let thermalDemoMode='auto';
+  window.__p4DemoThermalMode=value=>{if(['auto','bypass','ambient','series','parallel','off'].includes(value))thermalDemoMode=value;if(typeof fetchPreheat==='function')fetchPreheat();};
+  function simulatedPreheat(){
+    const seconds=(Date.now()-thermalDemoStart)/1000,wave=Math.sin(seconds/8),heating=preheat.enabled;
+    const mode=!heating?'off':thermalDemoMode==='auto'?['bypass','series','parallel','ambient'][Math.floor(seconds/12)%4]:thermalDemoMode;
+    const flowing=mode!=='off',pack=28+Math.sin(seconds/30)*1.2,power=heating&&flowing?7.2+wave*.4:0;
+    Object.assign(preheat,{active:heating,batteryWarm:false,blocked:false,blockedReason:'NONE',evalAgeMs:20,targetReached:false,autoOffReason:'NONE',tripId:'0x082',
+      packSeen:true,packTempMinC:pack-1.5,packTempMaxC:pack+1.8,packTempAvgC:pack,
+      bmsSeen:true,bmsPreconditionAllowed:true,bmsHeatingWorthwhile:pack<preheat.targetC,heatingActive:power>0,
+      statorFrontSeen:true,statorRearSeen:true,statorHeatFrontKw:power/2,statorHeatRearKw:power/2,statorHeatKw:power,
+      statorFrontAgeMs:35,statorRearAgeMs:40,coolantSeen:true,coolantFlowLpm:flowing?8.5+wave*.6:0,
+      ptAvgSeen:true,ptPackAvgC:pack,ptAvgAgeMs:40,ptMaxPackSeen:true,ptMaxPackC:pack+1.8,ptMaxPackAgeMs:50,
+      ptAmbientSeen:true,ptAmbientC:12.5,ptAmbientAgeMs:100,ptCellTargetSeen:true,ptCellTargetC:preheat.targetC,ptCellTargetAgeMs:60,
+      ptHpPowerSeen:true,ptHpPowerW:power*1000,ptHpPowerAgeMs:50,ptFlowReqSeen:true,ptFlowReqLpm:flowing?9:0,ptFlowReqAgeMs:80,
+      ptPumpSeen:true,ptPumpRpm:flowing?Math.round(2800+wave*150):0,ptPumpAgeMs:40,ptHeatLimitSeen:true,ptHeatLimitKw:9,ptHeatLimitAgeMs:70,
+      thVitalsAgeMs:30,thModeAgeMs:40,thSysAgeMs:50,thInletsAgeMs:80,thFlowsAgeMs:50,thPcsAgeMs:100,thInvFrontAgeMs:90,thInvRearAgeMs:90,thApAgeMs:120,thInfoAgeMs:100,
+      thHeatPump:true,thValveMode:mode==='ambient'?3:mode==='parallel'?1:0,thHpReq:mode==='bypass'?2:1,
+      thPumpBatRpm:flowing?Math.round(2400+wave*120):0,thPumpPtRpm:flowing?Math.round(2800+wave*150):0,thFanRpm:flowing?Math.round(700+wave*80):0,
+      thPtInletC:flowing?46+wave*2:25,thBatInletC:flowing?38+wave:25,thFlowPtLpm:flowing?9.5+wave*.5:0,thFlowBatLpm:flowing?8.5+wave*.6:0,
+      thDcdcC:42+wave,thChargerC:36+wave,thInvFrontC:power?58+wave*2:30,thInvRearC:power?56+wave*2:29,thApC:47+wave,thInfoC:43+wave,
+      srcRaw:'AB 50 C8 13 FF 03 8E 14',lastTxRaw:heating?'AB 50 C8 13 FF 03 8E 14':'',maxTxGapMs:104,replyTx:32,carConflict:32,replyLatMaxMs:4,heatDrops:0,heatDropsNearCar:0,replyBreaker:false});
+    if(heating)preheat.txOk=1200+Math.floor(seconds*10);
+    return preheat;
+  }
+
   function saveSimulation(){try{localStorage.setItem(savedKey,JSON.stringify({fsd:fsdSettings,smartshift,chinaRestore:serviceSettings.chinaRestore}))}catch(e){}}
   const setAp=window.__t2PreviewSetAp;
   window.__t2PreviewSetAp=next=>{setAp(next);fsdSettings.apBlocked=apActive;if(typeof fetchFsdSettings==='function')fetchFsdSettings();};
@@ -789,7 +814,7 @@ html[data-theme="dark"] #t2PreviewControls :is(.previewApChoices,.previewModelCh
       if(serviceSettings.chinaRestore)serviceSettings.restoreTxOk++;
       return send(serviceSettings);
     }
-    if(path.startsWith('/api/preheat/')){if(path.endsWith('/set')){update(preheat);if(params.has('enabled'))preheat.enabled=params.get('enabled')==='1';}return send(preheat);}
+    if(path.startsWith('/api/preheat/')){if(path.endsWith('/set')){update(preheat);if(params.has('enabled'))preheat.enabled=params.get('enabled')==='1';}return send(simulatedPreheat());}
     if(path==='/api/profile/select'){
       const url=new URL(location.href);url.searchParams.set('previewModel',params.get('profile'));url.searchParams.set('previewTopology',params.get('topology'));url.searchParams.set('previewTurn',params.get('turn'));setTimeout(()=>location.assign(url.href),200);return send({ok:true,rebooting:true});
     }
@@ -886,6 +911,8 @@ html[data-theme="dark"] #t2PreviewControls :is(.previewApChoices,.previewModelCh
     <button data-preview-ap="AUTOSTEER" type="button">AUTOSTEER</button>
     <button data-preview-ap="NOA" type="button">NOA</button>
   </div>
+  <label class="previewControlsLabel" for="previewThermalMode">Thermal circuit · simulated</label>
+  <select id="previewThermalMode" aria-label="Simulated thermal circuit" style="width:100%;padding:8px;border-radius:10px;background:transparent;color:inherit;border:1px solid #888"><option value="auto">Auto · changes every 12 s</option><option value="bypass">Series Radiator Bypass</option><option value="series">Series</option><option value="parallel">Parallel</option><option value="ambient">Ambient Source</option><option value="off">Pumps stopped</option></select>
   <div class="previewControlsLabel">Vehicle model</div>
   <div aria-label="Vehicle model" class="previewModelChoices" role="group">
     <button data-preview-model="1" type="button">Model Y L</button>
@@ -2958,6 +2985,7 @@ q('s3xyFeatureToggle').checked=s3xyEnabled;q('s3xyFeatureDesc').textContent="Use
   const state=window.__t2PreviewState;
   if(!state)return;
   const q=id=>document.getElementById(id);
+  q('previewThermalMode').onchange=e=>window.__p4DemoThermalMode(e.target.value);
   function navigate(values){
     const url=new URL(location.href);
     const next={...state,...values};
